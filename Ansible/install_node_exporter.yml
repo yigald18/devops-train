@@ -1,0 +1,68 @@
+- name: Install node exporter
+  hosts: all
+  any_errors_fatal: true
+  gather_facts: no
+
+  tasks:
+    - name: get the binary
+      get_url:
+        url: https://github.com/prometheus/node_exporter/releases/download/v1.4.0/node_exporter-1.4.0.linux-amd64.tar.gz
+        dest: /tmp/
+      retries: 2
+      delay: 20
+
+    - name: extract binary
+      unarchive:
+        src: /tmp/node_exporter-1.4.0.linux-amd64.tar.gz
+        dest: /tmp/
+
+    - name: add node_exporter user
+      user:
+        name: node_exporter
+        shell: /bin/false
+        create_home: true
+
+    - name: Copy binary
+      copy:
+        remote_src: true
+        src: /tmp/node_exporter-1.4.0.linux-amd64/node_exporter
+        dest: /usr/local/bin
+        owner: node_exporter
+        group: node_exporter
+        mode: a+x
+
+    - name: create service file
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          Wants=network-online.target
+          After=network-online.target
+
+
+          [Service]
+          User=node_exporter
+          Group=node_exporter
+          Type=simple
+          ExecStart=/usr/local/bin/node_exporter
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: reload systemd
+      systemd:
+       state: started
+       name: node_exporter
+       daemon_reload: yes
+
+    - name: test and display metrix
+      uri:
+        url: http://localhost:9100/metrics
+        method: GET
+        return_content: yes
+      register: node_exporter_metrix
+
+    - name: print metrix
+      debug:
+        msg: "{{ node_exporter_metrix['content'].split('\n')[0:20] }}"
